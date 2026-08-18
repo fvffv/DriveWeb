@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Avalonia.OfficeViewer Design</title>
+<style>
+body{font-family:Arial,"Microsoft YaHei",sans-serif;line-height:1.7;margin:40px;color:#222}
+h1,h2,h3{color:#333}
+pre{background:#f5f5f5;padding:16px;border-radius:8px;overflow:auto}
+code{font-family:Consolas,monospace}
+table{border-collapse:collapse;width:100%}
+td,th{border:1px solid #ccc;padding:8px}
+</style>
+</head>
+<body>
+<h1>Avalonia.OfficeViewer</h1>
+<h2>基于 Vue-office 思想的 Native AOT 跨平台文档预览引擎设计方案</h2>
+
+<h2>1. 项目目标</h2>
+<p>参考 Vue-office 系列项目思想，实现基于 C# + Avalonia UI + Native AOT 的跨平台文档预览框架。</p>
+<ul>
+<li>支持 DOCX</li>
+<li>支持 XLSX</li>
+<li>支持 PPTX</li>
+<li>支持 PDF</li>
+<li>支持 Windows/Linux/macOS/Android/iOS</li>
+<li>不依赖 Office</li>
+<li>不依赖 COM</li>
+<li>不依赖 WebView</li>
+<li>支持 Native AOT</li>
+</ul>
+
+<h2>2. 核心架构</h2>
+<pre>
+Office File
+    |
+    v
+Parser
+    |
+    v
+Document Object Model
+    |
+    v
+Avalonia Visual Tree
+    |
+    v
+Skia Renderer
+</pre>
+
+<h2>3. Native AOT要求</h2>
+<ul>
+<li>禁止 Activator.CreateInstance</li>
+<li>禁止 Assembly.Load</li>
+<li>禁止 Type.GetType</li>
+<li>避免运行时反射</li>
+<li>所有类型必须编译期可分析</li>
+</ul>
+
+<h2>4. 项目结构</h2>
+<pre>
+Avalonia.OfficeViewer
+
+OfficeViewer.Core
+ ├── DocumentModel
+ ├── Layout
+ ├── Styles
+ ├── Resources
+ └── Pagination
+
+OfficeViewer.Docx
+OfficeViewer.Xlsx
+OfficeViewer.Pptx
+OfficeViewer.Pdf
+OfficeViewer.Avalonia
+</pre>
+
+<h2>5. Document Model</h2>
+<pre>
+DOCX
+XLSX
+PPTX
+PDF
+
+      |
+      v
+
+DocumentModel
+
+      |
+      v
+
+Avalonia Renderer
+</pre>
+
+<pre>
+abstract class DocumentElement
+
+TextElement
+ImageElement
+TableElement
+ShapeElement
+</pre>
+
+<h2>6. DOCX解析</h2>
+<p>解析 document.xml、styles.xml、numbering.xml、media。</p>
+<pre>
+DOCX
+ |
+Zip读取
+ |
+XML解析
+ |
+Paragraph
+ |
+Run
+ |
+Style
+ |
+DocumentModel
+</pre>
+
+<h3>支持</h3>
+<ul>
+<li>字体</li>
+<li>字号</li>
+<li>粗体</li>
+<li>斜体</li>
+<li>下划线</li>
+<li>颜色</li>
+<li>段落布局</li>
+<li>表格</li>
+<li>图片</li>
+</ul>
+
+<h2>7. XLSX解析</h2>
+<pre>
+xlsx
+ |
+xl/workbook.xml
+ |
+xl/worksheets/*.xml
+ |
+xl/styles.xml
+</pre>
+
+<p>支持：</p>
+<ul>
+<li>单元格</li>
+<li>字体</li>
+<li>背景</li>
+<li>边框</li>
+<li>合并</li>
+<li>行列宽</li>
+<li>基础公式</li>
+</ul>
+
+<h2>8. PPTX解析</h2>
+<table>
+<tr><th>PPT</th><th>Avalonia</th></tr>
+<tr><td>TextBox</td><td>TextBlock</td></tr>
+<tr><td>Image</td><td>Image</td></tr>
+<tr><td>Rectangle</td><td>Border</td></tr>
+<tr><td>Line</td><td>Line</td></tr>
+<tr><td>Group</td><td>Panel</td></tr>
+</table>
+
+<h2>9. PDF</h2>
+<pre>
+PDF
+ |
+PDFium/MuPDF
+ |
+Bitmap
+ |
+Avalonia Image
+</pre>
+
+<h2>10. Avalonia渲染</h2>
+<p>不生成HTML，直接生成Avalonia Control Tree。</p>
+<pre>
+DocumentElement
+
+        |
+
+Avalonia Control
+
+        |
+
+Skia Renderer
+</pre>
+
+<h2>11. Layout设计</h2>
+<p>使用Avalonia自身布局系统：</p>
+<ul>
+<li>Measure</li>
+<li>Arrange</li>
+<li>Panel</li>
+<li>Grid</li>
+<li>Canvas</li>
+<li>TextLayout</li>
+</ul>
+
+<h2>12. 分页系统</h2>
+<p>实现DocumentPage：</p>
+<ul>
+<li>A4尺寸</li>
+<li>页边距</li>
+<li>页眉</li>
+<li>页脚</li>
+<li>分页</li>
+</ul>
+
+<h2>13. 性能优化</h2>
+<ul>
+<li>延迟解析</li>
+<li>虚拟化</li>
+<li>分页加载</li>
+<li>支持大型文档</li>
+</ul>
+
+<h2>14. API设计</h2>
+<pre>
+var viewer = new OfficeViewer();
+viewer.Open("test.docx");
+</pre>
+
+<h2>15. 开发顺序</h2>
+<ol>
+<li>DocumentModel</li>
+<li>Avalonia Renderer</li>
+<li>DOCX文本和图片</li>
+<li>DOCX表格和样式</li>
+<li>XLSX</li>
+<li>PPTX</li>
+<li>PDF</li>
+<li>AOT测试</li>
+</ol>
+
+<h2>最终目标</h2>
+<p>
+实现类似 Vue-office 的跨平台文档查看器，
+但使用 C#、Avalonia、Native AOT，
+无需浏览器和Office依赖。
+</p>
+
+</body>
+</html>
