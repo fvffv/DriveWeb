@@ -197,6 +197,8 @@ export interface BasicInformation {
 export interface AISetting {
     Enable: boolean;              // 是否启用 AI 功能
     ImageCosineThreshold: number; // 图片相似度阈值 (0-1)
+    TextCosineThreshold: number;  // 文本相关度阈值 (0-1)
+    TextGapRatio: number;         // 文本落差比
     BaseURL?: string;
     ApiKey?: string;
     Model?: string;

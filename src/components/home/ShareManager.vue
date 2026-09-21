@@ -222,12 +222,43 @@ const isExpired = (endValidityStr: string) => {
 
 const copyLink = (shareId: string, password?: string | null) => {
   const link = `${window.location.origin}/share/${shareId}`;
-  let text = `分享链接: ${link}`;
-  if (password) text += `\n提取码: ${password}`;
+  let textToCopy = `分享链接: ${link}`;
+  if (password) textToCopy += `\n提取码: ${password}`;
 
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success('分享链接及提取码已复制');
-  }).catch(() => ElMessage.error('复制失败，请手动操作'));
+  // 1. 优先使用现代 Clipboard API (仅在 HTTPS 或 localhost 可用)
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(textToCopy)
+        .then(() => ElMessage.success('分享链接及提取码已复制'))
+        .catch(() => ElMessage.error('复制失败，请手动操作'));
+  } else {
+    // 2. 降级方案：使用传统 execCommand 兼容 HTTP 环境
+    const textArea = document.createElement("textarea");
+    textArea.value = textToCopy;
+
+    // 避免出现滚动条及影响页面布局
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.opacity = "0";
+
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        ElMessage.success('分享链接及提取码已复制');
+      } else {
+        ElMessage.error('复制失败，请手动复制');
+      }
+    } catch (err) {
+      console.error('Fallback: Oops, unable to copy', err);
+      ElMessage.error('复制失败，浏览器不支持');
+    }
+    // 用完后移除该元素
+    document.body.removeChild(textArea);
+  }
 };
 
 const deleteShare = async (shareId: FileShareInfo) => {

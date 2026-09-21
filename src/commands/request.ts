@@ -40,7 +40,8 @@ service.interceptors.response.use(
         // 如果响应数据不是我们期望的格式，直接抛出错误
         // 这里的 `code` 是与后端约定好的状态码，例如 20000 表示成功
 
-        if (res.Status !== 0 && res.Status !== 1) {
+        // 外部网盘设备码轮询使用 Status=2 表示“等待用户确认”，这不是错误。
+        if (res.Status !== 0 && res.Status !== 1 && res.Status !== 2) {
 
             if (res.Status === 401) {
                 useRouter().push('/login');

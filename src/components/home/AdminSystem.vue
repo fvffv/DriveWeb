@@ -120,6 +120,30 @@ onMounted(() => {
                   </el-form-item>
                 </el-col>
 
+                <!-- 新增：文本相关度阈值 -->
+                <el-col :span="12">
+                  <el-form-item label="文本相关度阈值 (0-1)">
+                    <el-input-number
+                        v-model="systemConfig.aiSetting.TextCosineThreshold"
+                        :min="0" :max="1" :step="0.05"
+                        style="width: 100%;"
+                        placeholder="默认 0.40"
+                    />
+                  </el-form-item>
+                </el-col>
+
+                <!-- 新增：文本落差比 -->
+                <el-col :span="12">
+                  <el-form-item label="文本搜索落差比">
+                    <el-input-number
+                        v-model="systemConfig.aiSetting.TextGapRatio"
+                        :min="0" :step="0.1"
+                        style="width: 100%;"
+                        placeholder="默认 2.7"
+                    />
+                  </el-form-item>
+                </el-col>
+
                 <el-col :span="24">
                   <el-form-item label="接口地址 (BaseURL)">
                     <el-input
@@ -313,6 +337,7 @@ onMounted(() => {
                   <el-form-item label="数据库类型">
                     <el-select v-model="systemConfig.dbSetting.DbType" style="width: 100%" placeholder="留空则不更改">
                       <el-option label="MySql (0)" :value="0" />
+                      <el-option label="SQLite (2)" :value="2" />
                       <el-option label="SqlServer (1)" :value="1" />
                       <el-option label="PostgreSql (4)" :value="4" />
                     </el-select>

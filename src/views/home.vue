@@ -26,6 +26,8 @@ import AdminUsers from '@/components/home/AdminUsers.vue';
 import AdminFiles from '@/components/home/AdminFiles.vue';
 import AdminSystem from '@/components/home/AdminSystem.vue';
 import AdminLogs from "@/components/home/AdminLogs.vue";
+import ExternalDriveView from '@/components/home/ExternalDriveView.vue';
+import type { ExternalDriveAccount } from '@/commands/edrive';
 
 /**
  * 初始化状态管理和常量
@@ -42,6 +44,8 @@ const currentPropItem = ref<FileInfo>({}); // 当前选中的文件属性
 
 // 👇 新增：看板组件的引用，用于触发图表重绘
 const adminDashboardRef = ref<InstanceType<typeof AdminDashboard> | null>(null);
+const externalDriveViewRef = ref<InstanceType<typeof ExternalDriveView> | null>(null);
+const sidebarRef = ref<InstanceType<typeof Sidebar> | null>(null);
 
 // 文档预览状态
 const docPreviewVisible = ref(false);
@@ -128,6 +132,10 @@ const handleNavigation = (index:string) => {
       break;
     case "设置":
       tab.value = 'settings';
+      break;
+    case "外部网盘":
+      tab.value = 'external';
+      searchIsVisible.value = false;
       break;
 
       // ... 下方的管理员菜单逻辑保持不变
@@ -246,6 +254,23 @@ const toggleSidebar = () => {
 const closeSidebar = () => {
   isSidebarOpen.value = false;
 };
+
+const openExternalDriveAdd = () => {
+  tab.value = 'external';
+  homeStore.activeNavItem = '外部网盘';
+  nextTick(() => externalDriveViewRef.value?.openAddDialog());
+};
+
+const openExternalDrive = async (drive: ExternalDriveAccount) => {
+  tab.value = 'external';
+  searchIsVisible.value = false;
+  homeStore.activeNavItem = '外部网盘';
+  await nextTick();
+  await externalDriveViewRef.value?.openDrive(drive);
+};
+
+const refreshExternalDriveList = () => sidebarRef.value?.refreshExternalDrives();
+const clearExternalDrive = (externalId: string) => externalDriveViewRef.value?.clearDrive(externalId);
 //文件操作逻辑
 // 文件操作逻辑
 const handleOpenFile = async (item: FileInfo) => {
@@ -395,7 +420,7 @@ const handleFileCommand =async ({ item, command ,callback,newName}) => {
       }
       break;
     case 'copy-link':
-      const link = `${import.meta.env.VITE_APP_BASE_API}/Files/DirectLink/${item.Id}`;
+      const link = `${window.location.origin}/Files/DirectLink/${item.Id}`;
       // 1. 优先使用现代 Clipboard API (仅在 HTTPS 或 localhost 可用)
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(link)
@@ -493,10 +518,14 @@ onBeforeUnmount(() => {
       <div v-if="isMobileView && isSidebarOpen" class="mobile-sidebar-mask" @click="closeSidebar"></div>
       <div class="sidebar-shell" :class="{ 'is-open': isSidebarOpen }">
         <Sidebar
+            ref="sidebarRef"
             :active-nav-item="homeStore.activeNavItem"
             @navigate="handleNavigation"
             @custom-filter="customFilterClick"
             @selectView="handleViewSelect"
+            @external-add="openExternalDriveAdd"
+            @external-select="openExternalDrive"
+            @external-deleted="clearExternalDrive"
             @close="closeSidebar"
         />
       </div>
@@ -535,6 +564,15 @@ onBeforeUnmount(() => {
           <el-tab-pane name="statistics" class="content-pane">
             <div class="scroll-area">
               <Statistics />
+            </div>
+          </el-tab-pane>
+          <el-tab-pane name="external" class="content-pane">
+            <div class="scroll-area">
+              <ExternalDriveView
+                  ref="externalDriveViewRef"
+                  @drive-connected="refreshExternalDriveList"
+                  @drive-list-changed="refreshExternalDriveList"
+              />
             </div>
           </el-tab-pane>
 

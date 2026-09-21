@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import {
   ElMenu, ElMenuItem, ElDialog, ElForm, ElFormItem,
-  ElInput, ElButton, ElMessage, ElTooltip, ElRadioGroup, ElRadio, type FormInstance
+  ElInput, ElButton, ElMessage, ElMessageBox, ElTooltip, ElRadioGroup, ElRadio, type FormInstance
 } from 'element-plus';
 
 import 'element-plus/es/components/dialog/style/css';
@@ -18,12 +18,80 @@ import Home from '@/store/home.ts';
 import Setting from "@/store/setting.js";
 import { UserApi } from "@/commands/user";
 import { CustomView } from "@/models/user_models";
+import { CloudDriveType, EdriveApi, type ExternalDriveAccount } from "@/commands/edrive";
 
 const settingStore = Setting();
 const homeStore = Home();
 
 const props = defineProps<{ activeNavItem: string }>();
-const emit = defineEmits(['navigate', 'custom-filter','selectView', 'close']);
+const emit = defineEmits(['navigate', 'custom-filter','selectView', 'external-add', 'external-select', 'external-deleted', 'close']);
+
+const externalDrives = ref<ExternalDriveAccount[]>([]);
+const externalDrivesLoading = ref(false);
+const externalTokenVersion = ref(0);
+const selectedExternalDriveId = ref('');
+
+const externalDriveId = (drive: ExternalDriveAccount) => String(drive.external_id || '');
+const externalDriveType = (drive: ExternalDriveAccount) => Number(drive.drive_type ?? 0);
+const externalDriveName = (drive: ExternalDriveAccount) => drive.display_name || '外部网盘';
+const externalDriveTypeName = (type: number) => {
+  if (type === CloudDriveType.Baidu) return '百度网盘';
+  if (type === CloudDriveType.Aliyun) return '阿里云盘';
+  if (type === CloudDriveType.OneDrive) return 'OneDrive';
+  return `网盘 ${type}`;
+};
+const externalTokenKey = (id: string) => `external-drive-access-token:${id}`;
+const hasExternalToken = (drive: ExternalDriveAccount) => {
+  externalTokenVersion.value;
+  return Boolean(localStorage.getItem(externalTokenKey(externalDriveId(drive))));
+};
+
+const loadExternalDrives = async () => {
+  externalDrivesLoading.value = true;
+  try {
+    const response = await EdriveApi.GetExternalDriveList();
+    if (response.Status === 0) externalDrives.value = Array.isArray(response.Data) ? response.Data : [];
+    else ElMessage.error(response.Msg || '获取外部网盘列表失败');
+  } catch {
+    ElMessage.error('获取外部网盘列表失败');
+  } finally {
+    externalDrivesLoading.value = false;
+  }
+};
+
+const refreshExternalDrives = async () => {
+  externalTokenVersion.value++;
+  await loadExternalDrives();
+};
+defineExpose({ refreshExternalDrives });
+
+const externalMenuIndex = (drive: ExternalDriveAccount) => `external-drive:${externalDriveId(drive)}`;
+
+const removeExternalDrive = async (drive: ExternalDriveAccount, event?: Event) => {
+  event?.stopPropagation();
+  const id = externalDriveId(drive);
+  if (!id) return;
+  try {
+    await ElMessageBox.confirm(`确定删除“${externalDriveName(drive)}”吗？`, '删除外部网盘', {
+      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消'
+    });
+    const response = await EdriveApi.DeleteExternalDrive(id);
+    if (response.Status !== 0) {
+      ElMessage.error(response.Msg || '删除失败');
+      return;
+    }
+    localStorage.removeItem(externalTokenKey(id));
+    externalDrives.value = externalDrives.value.filter(item => externalDriveId(item) !== id);
+    if (selectedExternalDriveId.value === id) selectedExternalDriveId.value = '';
+    externalTokenVersion.value++;
+    emit('external-deleted', id);
+    ElMessage.success('外部网盘已删除');
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('删除外部网盘失败');
+  }
+};
+
+onMounted(loadExternalDrives);
 
 // --- 常量配置 ---
 const availableIcons = [
@@ -219,6 +287,19 @@ const removeCustomMenu = async (name: string, event: Event) => {
 
 // --- 菜单交互核心逻辑 ---
 const handleMenuSelect = (index: any) => {
+  const menuIndex = String(index);
+  if (menuIndex.startsWith('external-drive:')) {
+    const id = menuIndex.slice('external-drive:'.length);
+    const drive = externalDrives.value.find(item => externalDriveId(item) === id);
+    if (drive) {
+      selectedExternalDriveId.value = id;
+      emit('external-select', drive);
+    }
+    emit('close');
+    return;
+  }
+  // 外部网盘使用独立的选中状态；切换到任何其他导航时必须清除，确保全侧栏仅有一个选中项。
+  selectedExternalDriveId.value = '';
   homeStore.menuName = index; // 更新可能用到此状态的依赖
   emit('navigate', index);
   emit('close');
@@ -330,6 +411,37 @@ const handleViewSelect = async (view: CustomView) => {
         <div v-if="homeStore.customMenus.length === 0" class="empty-tip">
           暂无数据，点击右上角 "魔棒" 或 "+" 添加
         </div>
+
+        <div class="external-drive-menu-group">
+          <div class="group-header">
+            <span class="group-title">外部网盘</span>
+            <div class="group-header-actions">
+              <el-tooltip content="添加外部网盘" placement="top" :show-after="300">
+                <i class="fa-solid fa-plus action-btn external-add-icon" @click.stop="emit('external-add')"></i>
+              </el-tooltip>
+            </div>
+          </div>
+
+          <div v-if="externalDrivesLoading" class="empty-tip">正在加载外部网盘…</div>
+          <template v-else>
+            <el-menu-item
+                v-for="drive in externalDrives"
+                :key="externalDriveId(drive)"
+                :index="externalMenuIndex(drive)"
+                class="external-drive-item"
+                :class="{ 'external-drive-selected': selectedExternalDriveId === externalDriveId(drive) }"
+            >
+              <i :class="['fa-solid', externalDriveType(drive) === CloudDriveType.Baidu ? 'fa-cloud' : 'fa-cloud-arrow-up']"></i>
+              <span class="external-drive-label">
+                <span class="menu-text">{{ externalDriveName(drive) }}</span>
+                <small>{{ externalDriveTypeName(externalDriveType(drive)) }}</small>
+              </span>
+              <span class="external-drive-status" :class="{ connected: hasExternalToken(drive) }" :title="hasExternalToken(drive) ? '已登录' : '未登录'"></span>
+              <i class="fa-solid fa-xmark delete-icon external-delete-icon" title="删除" @click.stop="removeExternalDrive(drive, $event)"></i>
+            </el-menu-item>
+            <div v-if="externalDrives.length === 0" class="empty-tip">暂无数据，点击右上角 "+" 添加</div>
+          </template>
+        </div>
       </div>
 
       <div class="menu-separator"></div>
@@ -348,6 +460,7 @@ const handleViewSelect = async (view: CustomView) => {
           <span>{{defaultMenu[4].Name}}</span>
         </el-menu-item>
       </div>
+
     </el-menu>
 
     <div class="storage-widget">
@@ -427,6 +540,8 @@ const handleViewSelect = async (view: CustomView) => {
 .app-header { padding: 20px 15px; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 12px; }
 .fluent-menu { background-color: transparent; border-right: none; flex: 1; overflow-y: auto; }
 .fluent-menu::-webkit-scrollbar { width: 0px; }
+.external-drive-menu-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.external-add-icon { width: auto !important; margin: 0 !important; }
 .menu-separator { height: 1px; background-color: var(--border-color); margin: 10px 16px; transition: background-color 0.3s ease; }
 .group-header { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; margin-bottom: 8px; margin-top: 4px; }
 .group-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.5px; }
@@ -437,10 +552,20 @@ const handleViewSelect = async (view: CustomView) => {
 .add-btn:hover { color: var(--accent-color); }
 .empty-tip { font-size: 12px; color: var(--text-secondary); padding: 8px 16px; text-align: center; opacity: 0.7; }
 .custom-group .el-menu-item { display: flex; align-items: center; padding-right: 12px !important; }
+.external-drive-item { display: flex; align-items: center; gap: 0 !important; padding-right: 12px !important; }
+.external-drive-item.external-drive-selected { color: var(--el-menu-active-color, var(--accent-color)); background-color: var(--bg-hover); }
+.external-drive-item.external-drive-selected > i:first-child { color: var(--accent-color); }
+.external-drive-item > i:first-child { color: var(--accent-color); }
+.external-drive-label { display: flex; min-width: 0; flex: 1; flex-direction: column; justify-content: center; line-height: 1.2; }
+.external-drive-label small { margin-top: 2px; color: var(--text-secondary); font-size: 11px; }
+.external-drive-status { width: 7px; height: 7px; flex: 0 0 7px; margin: 0 11px 0 6px; border-radius: 50%; background: var(--text-secondary); opacity: .55; }
+.external-drive-status.connected { background: #67c23a; opacity: 1; box-shadow: 0 0 0 3px rgba(103, 194, 58, .12); }
 .menu-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .action-icons { display: flex; align-items: center; gap: 10px; opacity: 0; transition: opacity 0.2s; }
 .custom-group .el-menu-item:hover .action-icons { opacity: 1; }
 .edit-icon, .delete-icon { font-size: 12px; color: var(--text-secondary); transition: color 0.2s, transform 0.1s; }
+.external-delete-icon { opacity: 0; }
+.external-drive-item:hover .external-delete-icon { opacity: 1; }
 .edit-icon:hover { color: var(--accent-color); transform: scale(1.1); }
 .delete-icon:hover { color: #f56c6c; transform: scale(1.1); }
 .storage-widget { margin-top: auto; padding: 16px; background: var(--bg-hover); border-radius: var(--radius, 8px); margin-left: 10px; margin-right: 10px; transition: background-color 0.3s ease; }
